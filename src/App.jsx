@@ -17,7 +17,8 @@ import {
   Save,
   Share2,
   ExternalLink,
-  Loader2
+  Loader2,
+  AlertTriangle
 } from 'lucide-react';
 
 // Firebase imports
@@ -25,12 +26,26 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot } from 'firebase/firestore';
 
-// --- Firebase Configuration ---
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+// --- Safe Configuration Loading ---
+// Canvas環境外で実行した場合にエラーでアプリが止まらないようにガードを入れます
+let firebaseConfig = null;
+try {
+  if (typeof __firebase_config !== 'undefined') {
+    firebaseConfig = JSON.parse(__firebase_config);
+  }
+} catch (e) {
+  console.error("Firebase config parsing error:", e);
+}
+
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'tuition-optimizer-default';
+
+// Firebaseサービスの初期化（configがある場合のみ）
+let app, auth, db;
+if (firebaseConfig) {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+}
 
 const COURSE_BASES = [
   { id: 'premium', label: 'コースA', price: 12000 },
@@ -65,11 +80,17 @@ const App = () => {
 
   // --- Auth logic ---
   useEffect(() => {
+    if (!auth) return;
+
     const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth initialization error:", err);
       }
     };
     initAuth();
@@ -110,13 +131,12 @@ const App = () => {
   };
 
   const saveSimulation = async () => {
-    if (!user) return;
+    if (!user || !db) return;
     setIsSaving(true);
     setSaveMessage('');
     
     try {
       const simId = lastSavedId || crypto.randomUUID().substring(0, 8);
-      // Rule 1: Use specific path
       const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'simulations', simId);
       
       await setDoc(docRef, {
@@ -139,9 +159,6 @@ const App = () => {
   };
 
   const copyShareLink = () => {
-    const text = `シミュレーションID: ${lastSavedId}`;
-    document.execCommand('copy');
-    // navigator.clipboard.writeText is safer but execCommand works in iframes
     const dummy = document.createElement("textarea");
     document.body.appendChild(dummy);
     dummy.value = lastSavedId;
@@ -151,6 +168,24 @@ const App = () => {
     setSaveMessage('IDをコピーしました！');
     setTimeout(() => setSaveMessage(''), 3000);
   };
+
+  // --- Config Error View ---
+  if (!firebaseConfig) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-xl border border-rose-100 text-center">
+          <AlertTriangle className="w-16 h-16 text-rose-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-slate-800 mb-2">設定エラー</h2>
+          <p className="text-slate-500 text-sm mb-6 leading-relaxed">
+            Firebaseの設定が見つかりません。Vercel等の環境変数に <code>__firebase_config</code> が正しく設定されているか確認してください。
+          </p>
+          <div className="bg-slate-50 rounded-xl p-4 text-left font-mono text-xs text-slate-600 overflow-x-auto">
+            {`// .env の例\nVITE_FIREBASE_CONFIG='{"apiKey":"..."}'`}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // --- Report Component ---
   const ReportModal = () => (
