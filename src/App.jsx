@@ -15,37 +15,9 @@ import {
   Printer,
   X,
   Save,
-  Share2,
-  ExternalLink,
-  Loader2,
-  AlertTriangle
+  RotateCcw,
+  Loader2
 } from 'lucide-react';
-
-// Firebase imports
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot } from 'firebase/firestore';
-
-// --- Safe Configuration Loading ---
-// Canvas環境外で実行した場合にエラーでアプリが止まらないようにガードを入れます
-let firebaseConfig = null;
-try {
-  if (typeof __firebase_config !== 'undefined') {
-    firebaseConfig = JSON.parse(__firebase_config);
-  }
-} catch (e) {
-  console.error("Firebase config parsing error:", e);
-}
-
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'tuition-optimizer-default';
-
-// Firebaseサービスの初期化（configがある場合のみ）
-let app, auth, db;
-if (firebaseConfig) {
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-}
 
 const COURSE_BASES = [
   { id: 'premium', label: 'コースA', price: 12000 },
@@ -55,48 +27,59 @@ const COURSE_BASES = [
 ];
 
 const App = () => {
-  // --- State ---
-  const [costs, setCosts] = useState({
+  // --- Initial States ---
+  const initialCosts = {
     rent: 150000,
     utilities: 30000,
     instructor: 200000,
     curriculum: 50000,
     supplies: 20000,
-  });
+  };
 
-  const [sponsorship, setSponsorship] = useState(250000);
-  const [studentCounts, setStudentCounts] = useState({
+  const initialStudentCounts = {
     premium: 5,
     standard: 10,
     basic: 5,
     entry: 0
-  });
+  };
 
-  const [user, setUser] = useState(null);
+  // --- State ---
+  const [costs, setCosts] = useState(initialCosts);
+  const [sponsorship, setSponsorship] = useState(250000);
+  const [studentCounts, setStudentCounts] = useState(initialStudentCounts);
   const [showReport, setShowReport] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
-  const [lastSavedId, setLastSavedId] = useState(null);
 
-  // --- Auth logic ---
+  // --- Persistence (Local Storage) ---
   useEffect(() => {
-    if (!auth) return;
-
-    const initAuth = async () => {
+    const savedData = localStorage.getItem('tuition_optimizer_data');
+    if (savedData) {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (err) {
-        console.error("Auth initialization error:", err);
+        const { costs: sCosts, sponsorship: sSponsorship, studentCounts: sCounts } = JSON.parse(savedData);
+        if (sCosts) setCosts(sCosts);
+        if (sSponsorship) setSponsorship(sSponsorship);
+        if (sCounts) setStudentCounts(sCounts);
+      } catch (e) {
+        console.error("Failed to load local data", e);
       }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
+    }
   }, []);
+
+  const saveToLocal = () => {
+    const data = { costs, sponsorship, studentCounts };
+    localStorage.setItem('tuition_optimizer_data', JSON.stringify(data));
+    setSaveMessage('ブラウザに保存しました');
+    setTimeout(() => setSaveMessage(''), 3000);
+  };
+
+  const resetData = () => {
+    setCosts(initialCosts);
+    setSponsorship(250000);
+    setStudentCounts(initialStudentCounts);
+    localStorage.removeItem('tuition_optimizer_data');
+    setSaveMessage('設定をリセットしました');
+    setTimeout(() => setSaveMessage(''), 3000);
+  };
 
   // --- Calculations ---
   const totalOperatingCost = useMemo(() => {
@@ -130,63 +113,6 @@ const App = () => {
     setStudentCounts(prev => ({ ...prev, [id]: parseInt(value) || 0 }));
   };
 
-  const saveSimulation = async () => {
-    if (!user || !db) return;
-    setIsSaving(true);
-    setSaveMessage('');
-    
-    try {
-      const simId = lastSavedId || crypto.randomUUID().substring(0, 8);
-      const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'simulations', simId);
-      
-      await setDoc(docRef, {
-        costs,
-        sponsorship,
-        studentCounts,
-        updatedAt: new Date().toISOString(),
-        createdBy: user.uid
-      });
-      
-      setLastSavedId(simId);
-      setSaveMessage('データをクラウドに保存しました。');
-      setTimeout(() => setSaveMessage(''), 3000);
-    } catch (error) {
-      console.error(error);
-      setSaveMessage('保存に失敗しました。');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const copyShareLink = () => {
-    const dummy = document.createElement("textarea");
-    document.body.appendChild(dummy);
-    dummy.value = lastSavedId;
-    dummy.select();
-    document.execCommand("copy");
-    document.body.removeChild(dummy);
-    setSaveMessage('IDをコピーしました！');
-    setTimeout(() => setSaveMessage(''), 3000);
-  };
-
-  // --- Config Error View ---
-  if (!firebaseConfig) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-        <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-xl border border-rose-100 text-center">
-          <AlertTriangle className="w-16 h-16 text-rose-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-slate-800 mb-2">設定エラー</h2>
-          <p className="text-slate-500 text-sm mb-6 leading-relaxed">
-            Firebaseの設定が見つかりません。Vercel等の環境変数に <code>__firebase_config</code> が正しく設定されているか確認してください。
-          </p>
-          <div className="bg-slate-50 rounded-xl p-4 text-left font-mono text-xs text-slate-600 overflow-x-auto">
-            {`// .env の例\nVITE_FIREBASE_CONFIG='{"apiKey":"..."}'`}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // --- Report Component ---
   const ReportModal = () => (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 print:p-0 print:bg-white print:static print:inset-auto">
@@ -215,7 +141,6 @@ const App = () => {
             <div className="text-right text-sm">
               <p className="font-bold">発行日: {new Date().toLocaleDateString('ja-JP')}</p>
               <p className="text-slate-400">クリエット教育支援プロジェクト</p>
-              {lastSavedId && <p className="text-[10px] text-slate-300 mt-1">Ref ID: {lastSavedId}</p>}
             </div>
           </div>
 
@@ -314,22 +239,19 @@ const App = () => {
         <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
           <div className="flex items-center gap-4">
             <button 
-              onClick={saveSimulation}
-              disabled={isSaving}
-              className="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all active:scale-95 disabled:opacity-50"
+              onClick={saveToLocal}
+              className="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all active:scale-95"
             >
-              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4 text-indigo-600" />}
-              {isSaving ? '保存中...' : '現在の設定を保存'}
+              <Save className="w-4 h-4 text-indigo-600" />
+              現在の設定を保存
             </button>
-            {lastSavedId && (
-              <button 
-                onClick={copyShareLink}
-                className="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all active:scale-95"
-              >
-                <Share2 className="w-4 h-4 text-emerald-600" />
-                共有IDをコピー
-              </button>
-            )}
+            <button 
+              onClick={resetData}
+              className="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-xl text-sm font-bold text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-all active:scale-95"
+            >
+              <RotateCcw className="w-4 h-4" />
+              リセット
+            </button>
             {saveMessage && (
               <span className="text-xs font-bold text-indigo-600 animate-pulse bg-indigo-50 px-3 py-1 rounded-full">
                 {saveMessage}
@@ -345,10 +267,10 @@ const App = () => {
           </button>
         </div>
 
-        <header className="mb-10">
-          <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3 tracking-tight">
+        <header className="mb-10 text-center md:text-left">
+          <h1 className="text-3xl font-black text-slate-800 flex flex-wrap justify-center md:justify-start items-center gap-3 tracking-tight">
             <Calculator className="text-indigo-600 w-9 h-9" />
-            TUITION OPTIMIZER <span className="text-slate-300 font-light">|</span> クリエット
+            TUITION OPTIMIZER <span className="hidden md:inline text-slate-300 font-light">|</span> クリエット
           </h1>
           <p className="text-slate-400 mt-2 font-medium">企業協賛による受講料引き下げシミュレーション</p>
         </header>
@@ -491,7 +413,7 @@ const App = () => {
               <div>
                 <h5 className="font-bold text-sm mb-2 uppercase tracking-widest text-indigo-400 underline decoration-indigo-400/30 underline-offset-8">運営へのヒント</h5>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  このシミュレーション結果はクラウドに保存可能です。保存されたIDを報告資料に記載することで、協賛企業様はいつでも最新のインパクト（費用対効果）を確認することができます。
+                  Firebaseを使わないこのバージョンでは、データはあなたのブラウザ内にのみ保存されます。報告資料（PDF）を出力して共有することで、協賛企業様に結果を伝えることができます。
                 </p>
               </div>
             </div>
