@@ -33,7 +33,15 @@ import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged }
 import { getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot, query, serverTimestamp } from 'firebase/firestore';
 
 // --- Firebase Configuration ---
-const firebaseConfig = JSON.parse(__firebase_config);
+const firebaseConfig = {
+  apiKey: "AIzaSyArYfL-wE_F0OF3QNl5_jh_B7ZXr7Ev5fg",
+  authDomain: "creatte-sponser-app.firebaseapp.com",
+  projectId: "creatte-sponser-app",
+  storageBucket: "creatte-sponser-app.firebasestorage.app",
+  messagingSenderId: "753873131194",
+  appId: "1:753873131194:web:496a6913a523139c7e1483",
+  measurementId: "G-LVQ6WXT9L3"
+};
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
