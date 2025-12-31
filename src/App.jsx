@@ -22,24 +22,18 @@ import {
   BarChart3,
   History,
   TrendingUp,
-  Calendar
+  Calendar,
+  Trash2,
+  Edit2
 } from 'lucide-react';
 
 // Firebase imports
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, setDoc, collection, onSnapshot, query, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot, query, serverTimestamp } from 'firebase/firestore';
 
 // --- Firebase Configuration ---
-const firebaseConfig = {
-  apiKey: "AIzaSyArYfL-wE_F0OF3QNl5_jh_B7ZXr7Ev5fg",
-  authDomain: "creatte-sponser-app.firebaseapp.com",
-  projectId: "creatte-sponser-app",
-  storageBucket: "creatte-sponser-app.firebasestorage.app",
-  messagingSenderId: "753873131194",
-  appId: "1:753873131194:web:496a6913a523139c7e1483",
-  measurementId: "G-LVQ6WXT9L3"
-};
+const firebaseConfig = JSON.parse(__firebase_config);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -104,7 +98,7 @@ const App = () => {
   useEffect(() => {
     if (!user) return;
 
-    // Rule 1: 厳格なパス使用 / Rule 2: シンプルなクエリで全取得
+    // Rule 1: 厳格なパス使用
     const recordsCol = collection(db, 'artifacts', appId, 'public', 'data', 'monthly_records');
     const unsubscribeSnapshot = onSnapshot(recordsCol, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -162,12 +156,11 @@ const App = () => {
     setTimeout(() => setSaveMessage(''), 3000);
   };
 
-  // Firebaseへの月次記録保存
+  // Firebaseへの月次記録保存（または上書き）
   const recordMonthlyStatus = async () => {
     if (!user) return;
     setIsRecording(true);
     try {
-      // Rule 1: パス指定
       const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'monthly_records', recordMonth);
       await setDoc(docRef, {
         month: recordMonth,
@@ -188,6 +181,31 @@ const App = () => {
     } finally {
       setIsRecording(false);
     }
+  };
+
+  // 記録の削除
+  const deleteMonthlyRecord = async (id) => {
+    if (!user || !window.confirm(`${id} のデータを削除してもよろしいですか？`)) return;
+    try {
+      const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'monthly_records', id);
+      await deleteDoc(docRef);
+      setSaveMessage('削除しました');
+      setTimeout(() => setSaveMessage(''), 3000);
+    } catch (e) {
+      console.error(e);
+      setSaveMessage('削除に失敗しました');
+    }
+  };
+
+  // 記録の読み込み（編集用）
+  const loadRecordForEdit = (record) => {
+    setCosts(record.costs || initialCosts);
+    setSponsorship(record.sponsorship || 0);
+    setStudentCounts(record.studentCounts || initialStudentCounts);
+    setRecordMonth(record.month);
+    setSaveMessage(`${record.month} のデータを読み込みました`);
+    setTimeout(() => setSaveMessage(''), 3000);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // --- 推移グラフコンポーネント ---
@@ -212,7 +230,7 @@ const App = () => {
     const sponsorPoints = historyRecords.map((r, i) => `${getX(i)},${getY(r.sponsorship)}`).join(' ');
 
     return (
-      <div className="w-full bg-slate-900 rounded-3xl p-6 text-white shadow-xl overflow-hidden relative">
+      <div className="w-full bg-slate-900 rounded-3xl p-6 text-white shadow-xl overflow-hidden relative mb-6">
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-2">
             <TrendingUp size={16} className="text-orange-400" />
@@ -224,12 +242,9 @@ const App = () => {
           </div>
         </div>
         <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto overflow-visible">
-          {/* Grid lines */}
           <line x1={padding} y1={getY(0)} x2={width - padding} y2={getY(0)} stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-          {/* Paths */}
           <polyline fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" points={costPoints} />
           <polyline fill="none" stroke="#ea580c" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" points={sponsorPoints} />
-          {/* Labels */}
           {historyRecords.map((r, i) => (
             <text key={i} x={getX(i)} y={height - 2} fill="#64748b" fontSize="8" textAnchor="middle" fontWeight="bold">
               {r.month.slice(5)}月
@@ -259,12 +274,12 @@ const App = () => {
           </div>
         </div>
 
-        <div className="p-8 md:p-16 print:p-10 space-y-12 text-slate-800 bg-white">
+        <div className="p-8 md:p-16 print:p-10 space-y-12 text-slate-800 bg-white text-left">
           <div className="flex flex-col md:flex-row justify-between items-start gap-6">
             <div className="space-y-2">
-              <div className="bg-orange-600 text-white px-3 py-1 text-[10px] font-bold tracking-[0.3em] inline-block rounded-sm">CONFIDENTIAL</div>
-              <h2 className="text-3xl md:text-4xl font-black tracking-tighter text-slate-900">協賛活動成果報告書</h2>
-              <p className="text-slate-500 font-medium">教育機会の創出と持続可能な運営に関するインパクト報告</p>
+              <div className="bg-orange-600 text-white px-3 py-1 text-[10px] font-bold tracking-[0.3em] inline-block rounded-sm text-left">CONFIDENTIAL</div>
+              <h2 className="text-3xl md:text-4xl font-black tracking-tighter text-slate-900 text-left">協賛活動成果報告書</h2>
+              <p className="text-slate-500 font-medium text-left">教育機会の創出と持続可能な運営に関するインパクト報告</p>
             </div>
             <div className="text-left md:text-right space-y-1 border-l-2 md:border-l-0 md:border-r-2 border-orange-500 pl-4 md:pr-4">
               <p className="text-xs font-bold text-slate-400">作成日</p>
@@ -288,18 +303,18 @@ const App = () => {
             </div>
 
             <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100">
+              <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 text-left">
                 <p className="text-xs font-bold text-slate-400 mb-2">総協賛金額</p>
                 <p className="text-4xl font-black text-slate-900 tracking-tighter">¥{sponsorship.toLocaleString()}</p>
               </div>
-              <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100">
+              <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 text-left">
                 <p className="text-xs font-bold text-slate-400 mb-2">一人あたりの還元額</p>
                 <p className="text-4xl font-black text-orange-600 tracking-tighter">¥{reductionPerStudent.toLocaleString()}</p>
               </div>
             </div>
           </section>
 
-          <section className="space-y-6">
+          <section className="space-y-6 text-left">
             <div className="flex items-center gap-2 font-bold text-xl text-slate-900 border-l-4 border-orange-500 pl-4">
               <BarChart3 className="text-orange-600" />
               資金使途の詳細内訳
@@ -330,7 +345,7 @@ const App = () => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-900 print:bg-white transition-opacity duration-500 overflow-x-hidden">
+    <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-900 print:bg-white transition-opacity duration-500 overflow-x-hidden text-left">
       <div className="max-w-6xl mx-auto print:hidden">
         
         {/* 上部ツールバー */}
@@ -378,14 +393,55 @@ const App = () => {
         <header className="mb-10 text-center md:text-left">
           <h1 className="text-2xl md:text-3xl font-black text-slate-800 flex flex-wrap justify-center md:justify-start items-center gap-2 md:gap-3 tracking-tight">
             <Calculator className="text-orange-600 w-8 h-8 md:w-9 md:h-9" />
-            受講料・協賛金最適化 <span className="hidden sm:inline text-slate-300 font-light">|</span> <span className="text-orange-600 tracking-wider">CLAYETTE</span>
+            月次：協賛金最適化 <span className="hidden sm:inline text-slate-300 font-light">|</span> <span className="text-orange-600 tracking-wider uppercase">株式会社クリエット</span>
           </h1>
-          <p className="text-slate-400 mt-2 font-medium text-sm md:text-base italic">協賛金バッファと月次推移を統合管理</p>
+          <p className="text-slate-400 mt-2 font-medium text-sm md:text-base italic">協賛金バッファと履歴管理を統合</p>
         </header>
 
-        {/* トレンドセクション (新規) */}
-        <section className="mb-8">
-           <TrendChart />
+        {/* トレンド & 履歴管理 */}
+        <section className="mb-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+           <div>
+             <TrendChart />
+           </div>
+           <div className="bg-white rounded-3xl border border-slate-200 p-6 overflow-hidden flex flex-col h-[230px]">
+             <div className="flex items-center gap-2 mb-4">
+               <History size={18} className="text-slate-400" />
+               <span className="text-sm font-bold text-slate-700">保存済み記録の一覧</span>
+             </div>
+             <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+               {historyRecords.length === 0 ? (
+                 <p className="text-[10px] text-slate-300 italic text-center py-10">記録はまだありません</p>
+               ) : (
+                 historyRecords.map((r) => (
+                   <div key={r.id} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 group transition-all hover:bg-white hover:border-orange-200">
+                     <div className="flex items-center gap-3">
+                       <span className="text-sm font-black text-slate-700">{r.month}</span>
+                       <div className="flex flex-col text-[10px] text-slate-400">
+                         <span>協賛金: ¥{r.sponsorship.toLocaleString()}</span>
+                         <span>還元: -¥{r.reductionAmount.toLocaleString()}</span>
+                       </div>
+                     </div>
+                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => loadRecordForEdit(r)}
+                          className="p-2 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                          title="読み込み/編集"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button 
+                          onClick={() => deleteMonthlyRecord(r.id)}
+                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          title="削除"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                     </div>
+                   </div>
+                 ))
+               )}
+             </div>
+           </div>
         </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
@@ -394,7 +450,7 @@ const App = () => {
           <div className="lg:col-span-1 space-y-6">
             
             {/* 運営コスト */}
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 md:p-6">
+            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 md:p-6 text-left">
               <div className="flex items-center gap-2 mb-6 font-bold text-slate-700 uppercase tracking-widest text-[10px] md:text-xs">
                 <Settings2 className="w-4 h-4 text-orange-500" />
                 月間運営コスト設定
@@ -404,13 +460,13 @@ const App = () => {
                   const labels = { rent: '家賃', utilities: '水道光熱費', instructor: '講師費用', curriculum: '教材・開発費', supplies: '備品・消耗品' };
                   return (
                     <div key={key}>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">{labels[key]}</label>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 text-left">{labels[key]}</label>
                       <div className="relative group">
                         <input
                           type="number"
                           value={value}
                           onChange={(e) => handleCostChange(key, e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-orange-500 outline-none transition-all text-left"
                         />
                         <span className="absolute right-3 top-2 text-slate-300 text-[10px]">円</span>
                       </div>
@@ -419,13 +475,13 @@ const App = () => {
                 })}
               </div>
               <div className="mt-6 pt-4 border-t border-dashed flex justify-between items-center">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-slate-400">合計コスト</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-slate-400 text-left">合計コスト</span>
                 <span className="text-base md:text-lg font-black text-orange-600">¥{totalOperatingCost.toLocaleString()}</span>
               </div>
             </div>
 
             {/* 生徒内訳 */}
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 md:p-6">
+            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 md:p-6 text-left">
               <div className="flex items-center gap-2 mb-6 font-bold text-slate-700 uppercase tracking-widest text-[10px] md:text-xs">
                 <Users className="w-4 h-4 text-orange-500" />
                 生徒の内訳
@@ -433,7 +489,7 @@ const App = () => {
               <div className="space-y-4">
                 {COURSE_BASES.map((course) => (
                   <div key={course.id} className="flex items-center justify-between gap-4">
-                    <label className="text-[11px] md:text-xs font-bold text-slate-500">{course.label}</label>
+                    <label className="text-[11px] md:text-xs font-bold text-slate-500 text-left">{course.label}</label>
                     <div className="flex items-center gap-2 w-20 md:w-24">
                       <input
                         type="number"
@@ -450,12 +506,12 @@ const App = () => {
             </div>
 
             {/* バッファ設定 */}
-            <div className="bg-orange-600 text-white rounded-3xl shadow-sm p-6">
+            <div className="bg-orange-600 text-white rounded-3xl shadow-sm p-6 text-left">
               <div className="flex items-center gap-2 mb-4 font-bold uppercase tracking-widest text-[10px]">
                 <ShieldCheck className="w-4 h-4 text-orange-200" />
                 協賛金バッファ設定
               </div>
-              <p className="text-[10px] text-orange-100 mb-4 leading-relaxed font-medium">
+              <p className="text-[10px] text-orange-100 mb-4 leading-relaxed font-medium text-left">
                 不測の事態に備え、月4回コース(¥12,000)の生徒何人分の資金を「予備費」として除外しますか？
               </p>
               <div className="flex items-center gap-4">
@@ -470,7 +526,7 @@ const App = () => {
                 />
                 <span className="text-xl font-black w-10 text-right">{bufferStudentTarget}<span className="text-[10px] font-normal ml-0.5">名分</span></span>
               </div>
-              <div className="mt-4 pt-4 border-t border-orange-500 flex justify-between items-center">
+              <div className="mt-4 pt-4 border-t border-orange-500 flex justify-between items-center text-left">
                 <span className="text-[10px] font-bold text-orange-200">確保資金額:</span>
                 <span className="text-sm font-black text-white">¥{bufferAmount.toLocaleString()}</span>
               </div>
@@ -481,15 +537,15 @@ const App = () => {
           <div className="lg:col-span-2 space-y-6">
             
             {/* 協賛金スライダー */}
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 md:p-8 relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 pointer-events-none opacity-10">
+            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 md:p-8 relative overflow-hidden text-left">
+              <div className="absolute top-0 right-0 p-4 pointer-events-none opacity-10 text-left">
                 <Coins className="text-orange-600 w-32 h-32" />
               </div>
-              <div className="relative z-10">
-                <div className="flex justify-between items-end mb-8">
+              <div className="relative z-10 text-left">
+                <div className="flex justify-between items-end mb-8 text-left">
                   <div>
-                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-black">現在の企業協賛金 総額</h3>
-                    <p className="text-4xl md:text-5xl font-black text-orange-600 tracking-tighter">¥{sponsorship.toLocaleString()}</p>
+                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-black text-left">現在の企業協賛金 総額</h3>
+                    <p className="text-4xl md:text-5xl font-black text-orange-600 tracking-tighter text-left">¥{sponsorship.toLocaleString()}</p>
                   </div>
                 </div>
                 <input
@@ -501,7 +557,7 @@ const App = () => {
                   onChange={(e) => setSponsorship(parseInt(e.target.value))}
                   className="w-full h-3 bg-slate-100 rounded-full appearance-none cursor-pointer accent-orange-600"
                 />
-                <div className="flex justify-between text-[10px] text-slate-300 mt-4 font-black uppercase tracking-widest">
+                <div className="flex justify-between text-[10px] text-slate-300 mt-4 font-black uppercase tracking-widest text-left">
                   <span>開始 ¥0</span>
                   <span>目標 ¥50万</span>
                   <span>最大 ¥150万</span>
@@ -510,13 +566,13 @@ const App = () => {
             </div>
 
             {/* インパクトバナー */}
-            <div className="bg-orange-600 rounded-[2.5rem] shadow-2xl shadow-orange-100 p-8 md:p-10 text-white flex flex-col sm:flex-row items-center justify-between gap-6">
-              <div className="text-center sm:text-left">
-                <p className="text-orange-100 text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] mb-3">一律月額引き下げ額 (1,000円単位)</p>
-                <div className="flex items-center justify-center sm:justify-start gap-3 md:gap-4">
+            <div className="bg-orange-600 rounded-[2.5rem] shadow-2xl shadow-orange-100 p-8 md:p-10 text-white flex flex-col sm:flex-row items-center justify-between gap-6 text-left">
+              <div className="text-center sm:text-left text-left">
+                <p className="text-orange-100 text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] mb-3 text-left">一律月額引き下げ額 (1,000円単位)</p>
+                <div className="flex items-center justify-center sm:justify-start gap-3 md:gap-4 text-left">
                   <ArrowDownCircle className="w-10 h-10 md:w-12 md:h-12 text-orange-200 animate-bounce-slow" />
-                  <span className="text-5xl md:text-7xl font-black tracking-tighter">¥{reductionPerStudent.toLocaleString()}</span>
-                  <span className="text-lg md:text-2xl font-bold opacity-60 self-end mb-1 md:mb-2">/ 名</span>
+                  <span className="text-5xl md:text-7xl font-black tracking-tighter text-left">¥{reductionPerStudent.toLocaleString()}</span>
+                  <span className="text-lg md:text-2xl font-bold opacity-60 self-end mb-1 md:mb-2 text-left">/ 名</span>
                 </div>
               </div>
               <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-6 text-center min-w-[140px]">
@@ -526,19 +582,19 @@ const App = () => {
             </div>
 
             {/* 受入余力の可視化 */}
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-2 font-bold text-slate-700 text-sm">
-                  <UserPlus className="text-orange-500 w-5 h-5" />
+            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 text-left">
+              <div className="flex items-center justify-between mb-6 text-left">
+                <div className="flex items-center gap-2 font-bold text-slate-700 text-sm text-left">
+                  <UserPlus className="text-orange-500 w-5 h-5 text-left" />
                   現在の受入可能枠 (追加募集余力)
                 </div>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-left">
                 {capacityPerCourse.map((course) => (
-                  <div key={course.id} className="relative group">
-                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 transition-all hover:bg-white hover:border-orange-200 hover:shadow-md">
-                      <p className="text-[10px] text-slate-400 font-bold mb-2">{course.label}</p>
-                      <p className="text-2xl font-black text-orange-600">+{course.count} <span className="text-[10px] font-normal text-slate-400">名</span></p>
+                  <div key={course.id} className="relative group text-left">
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 transition-all hover:bg-white hover:border-orange-200 hover:shadow-md text-left">
+                      <p className="text-[10px] text-slate-400 font-bold mb-2 text-left">{course.label}</p>
+                      <p className="text-2xl font-black text-orange-600 text-left">+{course.count} <span className="text-[10px] font-normal text-slate-400">名</span></p>
                     </div>
                   </div>
                 ))}
@@ -546,29 +602,29 @@ const App = () => {
             </div>
 
             {/* コース別価格カード */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
               {COURSE_BASES.map((course) => {
                 const discountedPrice = Math.max(0, course.price - reductionPerStudent);
                 const isFree = discountedPrice === 0;
                 return (
-                  <div key={course.id} className="bg-white rounded-2xl border border-slate-100 p-6 flex flex-col justify-between hover:border-orange-200 transition-all hover:shadow-md">
-                    <div className="flex justify-between items-start mb-4">
+                  <div key={course.id} className="bg-white rounded-2xl border border-slate-100 p-6 flex flex-col justify-between hover:border-orange-200 transition-all hover:shadow-md text-left">
+                    <div className="flex justify-between items-start mb-4 text-left">
                       <div>
-                        <h4 className="font-black text-slate-800 text-base md:text-lg tracking-tight">{course.label}</h4>
-                        <span className="text-[10px] md:text-xs text-slate-300 font-bold line-through">定価 ¥{course.price.toLocaleString()}</span>
+                        <h4 className="font-black text-slate-800 text-base md:text-lg tracking-tight text-left">{course.label}</h4>
+                        <span className="text-[10px] md:text-xs text-slate-300 font-bold line-through text-left">定価 ¥{course.price.toLocaleString()}</span>
                       </div>
                       <Layers className="text-slate-100 w-8 h-8" />
                     </div>
                     <div>
-                      <div className="flex items-end gap-1">
-                        <span className={`text-2xl md:text-3xl font-black ${isFree ? 'text-emerald-500' : 'text-slate-900'}`}>
+                      <div className="flex items-end gap-1 text-left">
+                        <span className={`text-2xl md:text-3xl font-black ${isFree ? 'text-emerald-500' : 'text-slate-900'} text-left`}>
                           {isFree ? '無料' : `¥${discountedPrice.toLocaleString()}`}
                         </span>
-                        {!isFree && <span className="text-[10px] text-slate-400 font-bold mb-1 md:mb-1.5">/ 月</span>}
+                        {!isFree && <span className="text-[10px] text-slate-400 font-bold mb-1 md:mb-1.5 text-left">/ 月</span>}
                       </div>
-                      <div className="mt-2 h-1 w-full bg-slate-50 rounded-full overflow-hidden">
+                      <div className="mt-2 h-1 w-full bg-slate-50 rounded-full overflow-hidden text-left">
                         <div 
-                          className="h-full bg-orange-500 transition-all duration-1000" 
+                          className="h-full bg-orange-500 transition-all duration-1000 text-left" 
                           style={{ width: `${Math.min(100, (reductionPerStudent / course.price) * 100)}%` }}
                         />
                       </div>
